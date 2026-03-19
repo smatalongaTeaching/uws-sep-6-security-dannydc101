@@ -1,0 +1,68 @@
+name: Verify Java Assignment
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    - name: Verify bundled JUnit Console Launcher
+      run: |
+        JUNIT_JAR="lib/junit-platform-console-standalone-1.13.0-M3.jar"
+
+        if [ ! -f "$JUNIT_JAR" ]; then
+          echo "Missing JUnit jar: $JUNIT_JAR"
+          exit 1
+        fi
+
+        echo "Using bundled JUnit jar: $JUNIT_JAR"
+        jar tf "$JUNIT_JAR" > /dev/null
+
+    - name: Compile ALL Java sources under com/uws
+      run: |
+        echo "Compiling all Java files under com/uws..."
+        JUNIT_JAR="lib/junit-platform-console-standalone-1.13.0-M3.jar"
+        mkdir -p out
+        find com/uws -type f -name "*.java" | sort > all_sources.txt
+        echo "Found $(wc -l < all_sources.txt) Java source file(s)."
+        
+        if [ -s all_sources.txt ]; then
+          javac -cp "$JUNIT_JAR" \
+                -d out @all_sources.txt
+        else
+          echo "No Java source files found under com/uws"
+          exit 1
+        fi
+
+    - name: Run ALL JUnit 5 Tests under com/uws
+      run: |
+        echo "Running JUnit 5 tests (scanning classpath)..."
+        java -jar lib/junit-platform-console-standalone-1.13.0-M3.jar \
+          --class-path out \
+          --scan-class-path \
+          --include-package com.uws
+
+    - name: Check README.md updated
+      id: readme_check
+      run: |
+        if git diff --quiet HEAD^ HEAD -- README.md; then
+          echo "updated=false" >> $GITHUB_OUTPUT
+        else
+          echo "updated=true" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Show README update result
+      run: echo "README updated? ${{ steps.readme_check.outputs.updated }}"
